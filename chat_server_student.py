@@ -1,9 +1,16 @@
+"""
+Created on Tue Jul 22 00:47:05 2014
+
+@author: alina, zzhang
+"""
+
 import time
 import socket
 import select
 import sys
 import string
 import indexer
+import json
 import pickle as pkl
 from chat_utils import *
 import chat_group as grp
@@ -22,11 +29,11 @@ class Server:
         self.all_sockets.append(self.server)
         #initialize past chat indices
         self.indices={}
-        #sonnet indexing
+        # sonnet
         self.sonnet_f = open('AllSonnets.txt.idx', 'rb')
         self.sonnet = pkl.load(self.sonnet_f)
         self.sonnet_f.close()
-        
+
     def new_client(self, sock):
         #add to all sockets and to new clients
         print('new client...')
@@ -36,34 +43,36 @@ class Server:
 
     def login(self, sock):
         #read the msg that should have login code plus username
-        msg = myrecv(sock)
-        if len(msg) > 0:
-            code = msg[0]
+        try:
+            msg = json.loads(myrecv(sock))
+            if len(msg) > 0:
 
-            if code == M_LOGIN:
-                name = msg[1:]
-                if self.group.is_member(name) != True:
-                    #move socket from new clients list to logged clients
-                    self.new_clients.remove(sock)
-                    #add into the name to sock mapping
-                    self.logged_name2sock[name] = sock
-                    self.logged_sock2name[sock] = name
-                    #load chat history of that user
-                    if name not in self.indices.keys():
-                        try:
-                            self.indices[name]=pkl.load(open(name+'.idx','rb'))
-                        except IOError: #chat index does not exist, then create one
-                            self.indices[name] = indexer.Index(name)
-                    print(name + ' logged in')
-                    self.group.join(name)
-                    mysend(sock, M_LOGIN + 'ok')
-                else: #a client under this name has already logged in
-                    mysend(sock, M_LOGIN + 'duplicate')
-                    print(name + ' duplicate login attempt')
-            else:
-                print ('wrong code received')
-        else: #client died unexpectedly
-            self.logout(sock)
+                if msg["action"] == "login":
+                    name = msg["name"]
+                    if self.group.is_member(name) != True:
+                        #move socket from new clients list to logged clients
+                        self.new_clients.remove(sock)
+                        #add into the name to sock mapping
+                        self.logged_name2sock[name] = sock
+                        self.logged_sock2name[sock] = name
+                        #load chat history of that user
+                        if name not in self.indices.keys():
+                            try:
+                                self.indices[name]=pkl.load(open(name+'.idx','rb'))
+                            except IOError: #chat index does not exist, then create one
+                                self.indices[name] = indexer.Index(name)
+                        print(name + ' logged in')
+                        self.group.join(name)
+                        mysend(sock, json.dumps({"action":"login", "status":"ok"}))
+                    else: #a client under this name has already logged in
+                        mysend(sock, json.dumps({"action":"login", "status":"duplicate"}))
+                        print(name + ' duplicate login attempt')
+                else:
+                    print ('wrong code received')
+            else: #client died unexpectedly
+                self.logout(sock)
+        except:
+            self.all_sockets.remove(sock)
 
     def logout(self, sock):
         #remove sock from all lists
@@ -80,71 +89,48 @@ class Server:
 # main command switchboard
 #==============================================================================
     def handle_msg(self, from_sock):
-        #msg is the string sent by the client state machine: IMPORTANT
+        #read msg code
         msg = myrecv(from_sock)
         if len(msg) > 0:
-            code = msg[0]           
 #==============================================================================
-#             handle connect request: this is implemented for you
+# handle connect request this is implemented for you
 #==============================================================================
-            if code == M_CONNECT:
-                to_name = msg[1:]
+            msg = json.loads(msg)
+            if msg["action"] == "connect":
+                to_name = msg["target"]
                 from_name = self.logged_sock2name[from_sock]
                 if to_name == from_name:
-                    msg = M_CONNECT + 'hey you'
+                    msg = json.dumps({"action":"connect", "status":"self"})
                 # connect to the peer
                 elif self.group.is_member(to_name):
                     to_sock = self.logged_name2sock[to_name]
                     self.group.connect(from_name, to_name)
                     the_guys = self.group.list_me(from_name)
-                    msg = M_CONNECT + 'ok'
+                    msg = json.dumps({"action":"connect", "status":"success"})
                     for g in the_guys[1:]:
                         to_sock = self.logged_name2sock[g]
-                        mysend(to_sock, M_CONNECT + from_name)
+                        mysend(to_sock, json.dumps({"action":"connect", "status":"request", "from":from_name}))
                 else:
-                    msg = M_CONNECT + 'no_user'
+                    msg = json.dumps({"action":"connect", "status":"no-user"})
                 mysend(from_sock, msg)
 #==============================================================================
-#             handle multicast message exchange; IMPLEMENT THIS    
+# handle messeage exchange: IMPLEMENT THIS
 #==============================================================================
-            elif code == M_EXCHANGE:
+            elif msg["action"] == "exchange":
                 from_name = self.logged_sock2name[from_sock]
                 # Finding the list of people to send to
+                # and index message
+                pass
                 the_guys = self.group.list_me(from_name)[1:]
                 for g in the_guys:
-                    to_sock = self.logged_name2sock[g]                
+                    to_sock = self.logged_name2sock[g]
+                    pass
                     mysend(to_sock, "...Remember to index the messages before sending, or search won't work")
+
 #==============================================================================
-#             listing available peers; IMPLEMENT THIS
+# the "from" guy has had enough (talking to "to")!
 #==============================================================================
-            elif code == M_LIST:
-                from_name = self.logged_sock2name[from_sock]
-                msg = "M_LIST handler needs to use self.group functions to work"
-                mysend(from_sock, msg)
-#==============================================================================
-#             retrieve a sonnet; IMPLEMENT THIS
-#==============================================================================
-            elif code == M_POEM:
-                poem_indx = 0
-                from_name = self.logged_sock2name[from_sock]
-                poem = "M_POEM handler needs to use self.sonnet functions to work"
-                mysend(from_sock, M_POEM + poem)
-#==============================================================================
-#             retrieve the time; IMPLEMENT THIS
-#==============================================================================
-            elif code == M_TIME:
-                ctime = "M_TIME handler has to calc current date/time to send (use time module)"
-                mysend(from_sock, ctime)
-#==============================================================================
-#             search handler; IMPLEMENT THIS
-#==============================================================================
-            elif code == M_SEARCH:
-                search_rslt = "M_SEARCH handler needs to use self.indices search to work"
-                mysend(from_sock, M_SEARCH + search_rslt)
-#==============================================================================
-#             the "from" guy has had enough (talking to "to")!
-#==============================================================================
-            elif code == M_DISCONNECT:
+            elif msg["action"] == "disconnect":
                 from_name = self.logged_sock2name[from_sock]
                 the_guys = self.group.list_me(from_name)
                 self.group.disconnect(from_name)
@@ -152,15 +138,44 @@ class Server:
                 if len(the_guys) == 1:  # only one left
                     g = the_guys.pop()
                     to_sock = self.logged_name2sock[g]
-                    mysend(to_sock, M_DISCONNECT)
+                    mysend(to_sock, json.dumps({"action":"disconnect"}))
+#==============================================================================
+#                 listing available peers: IMPLEMENT THIS
+#==============================================================================
+            elif msg["action"] == "list":
+                pass
+                msg = "M_LIST handler needs to use self.group functions to work"
+                mysend(from_sock, json.dumps({"action":"list", "results":msg}))
+#==============================================================================
+#             retrieve a sonnet : IMPLEMENT THIS
+#==============================================================================
+            elif msg["action"] == "poem":
+                pass
+                poem = "M_POEM handler needs to use self.sonnet functions to work"
+                print('here:\n', poem)
+                mysend(from_sock, json.dumps({"action":"poem", "results":poem}))
+#==============================================================================
+#                 time
+#==============================================================================
+            elif msg["action"] == "time":
+                ctime = time.strftime('%d.%m.%y,%H:%M', time.localtime())
+                mysend(from_sock, json.dumps({"action":"time", "results":ctime}))
+#==============================================================================
+#                 search: : IMPLEMENT THIS
+#==============================================================================
+            elif msg["action"] == "search":
+                pass # get search search_rslt
+                search_rslt = "M_SEARCH handler needs to use self.indices search to work"
+                print('server side search: ' + search_rslt)
+                mysend(from_sock, json.dumps({"action":"search", "results":search_rslt}))
+
 #==============================================================================
 #                 the "from" guy really, really has had enough
 #==============================================================================
-            elif code == M_LOGOUT:
-                self.logout(from_sock)
+
         else:
             #client died unexpectedly
-            self.logout(from_sock)   
+            self.logout(from_sock)
 
 #==============================================================================
 # main loop, loops *forever*
@@ -182,7 +197,7 @@ class Server:
                #new client request
                sock, address=self.server.accept()
                self.new_client(sock)
-           
+
 def main():
     server=Server()
     server.run()
