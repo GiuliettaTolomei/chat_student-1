@@ -144,14 +144,14 @@ class Server:
 #==============================================================================
             elif msg["action"] == "list":
                 pass
-                msg = "M_LIST handler needs to use self.group functions to work"
+                msg = "needs to use self.group functions to work"
                 mysend(from_sock, json.dumps({"action":"list", "results":msg}))
 #==============================================================================
 #             retrieve a sonnet : IMPLEMENT THIS
 #==============================================================================
             elif msg["action"] == "poem":
                 pass
-                poem = "M_POEM handler needs to use self.sonnet functions to work"
+                poem = "needs to use self.sonnet functions to work"
                 print('here:\n', poem)
                 mysend(from_sock, json.dumps({"action":"poem", "results":poem}))
 #==============================================================================
@@ -165,7 +165,7 @@ class Server:
 #==============================================================================
             elif msg["action"] == "search":
                 pass # get search search_rslt
-                search_rslt = "M_SEARCH handler needs to use self.indices search to work"
+                search_rslt = "needs to use self.indices search to work"
                 print('server side search: ' + search_rslt)
                 mysend(from_sock, json.dumps({"action":"search", "results":search_rslt}))
 
